@@ -50,7 +50,7 @@ def parse_args():
                         help='Number of parallel workers. Default is 4.')
 
     parser.add_argument('--flag', nargs='?', default='sp',
-                        help='Flag indicating using RiWalk-SP or RiWalk-WL. Default is sp.')
+                        help='Flag indicating using RiWalk-SP(sp) or RiWalk-WL(wl). Default is sp.')
 
     return parser.parse_args()
 
