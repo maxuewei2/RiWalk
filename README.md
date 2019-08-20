@@ -3,7 +3,7 @@
 
 This repository provides a reference implementation of **RiWalk** as described in the paper:<br>
 > RiWalk: Fast Structural Node Embedding via Role Identification.<br>
-> Xuewei Ma, Geng Qin, Zhiyang Qiu, Mingxin Zheng, Zhe Wang.
+> Xuewei Ma, Geng Qin, Zhiyang Qiu, Mingxin Zheng, Zhe Wang.<br>
 > IEEE International Conference on Data Mining, ICDM, 2019.<br>
 
 The RiWalk algorithm learns continuous representations for nodes in any graph. RiWalk captures structural equivalence between nodes.  
@@ -18,11 +18,15 @@ RiWalk was written for Python 3. Before to execute RiWalk, it is necessary to in
 
 #### Example
 To run RiWalk on Zachary's karate club network using RiWalk-SP, execute the following command from the project home directory:<br/>
-	``python src/RiWalk.py --input graphs/karate.edgelist --output embs/karate.emb --num-walks 80 --walk-length 10 --window-size 10 --dimensions 128 --until-k 4 --flag sp``
+
+	python src/RiWalk.py --input graphs/karate.edgelist --output embs/karate.emb 
+	--num-walks 80 --walk-length 10 --window-size 10 --dimensions 128 --until-k 4 --flag sp
+
 
 #### Full Command List
 The full list of command line options is available with 
-  ``python src/RiWalk.py --help``
+	
+	python src/RiWalk.py --help
 
 #### Input
 The supported input format is an edgelist:
