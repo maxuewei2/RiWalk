@@ -41,16 +41,16 @@ def parse_args():
                         help='Context size for optimization. Default is 10.')
 
     parser.add_argument('--until-k', type=int, default=4,
-                        help='Neighborhood size k.')
+                        help='Neighborhood size k. Default is 4.')
 
     parser.add_argument('--iter', default=5, type=int,
-                        help='Number of epochs in SGD')
+                        help='Number of epochs in SGD. Default is 5.')
 
     parser.add_argument('--workers', type=int, default=4,
                         help='Number of parallel workers. Default is 4.')
 
     parser.add_argument('--flag', nargs='?', default='sp',
-                        help='flag')
+                        help='Flag indicating using RiWalk-SP or RiWalk-WL. Default is sp.')
 
     return parser.parse_args()
 
