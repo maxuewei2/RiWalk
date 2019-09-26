@@ -51,6 +51,6 @@ We would like to thank the authors of [node2vec](https://github.com/aditya-grove
 
 ### Miscellaneous
 
-Please send any questions you might have about the code and/or the algorithm to <selwynma@163.com>.
+Please send any questions you might have about the code and/or the algorithm to <xuew.ma@gmail.com>.
 
 *Note:* This is only a reference implementation of the framework RiWalk.
