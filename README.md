@@ -50,7 +50,18 @@ where dim1, ... , dimd is the *d*-dimensional representation learned by RiWalk.
 We would like to thank the authors of [node2vec](https://github.com/aditya-grover/node2vec), [struc2vec](https://github.com/leoribeiro/struc2vec) and [GraphWave](https://github.com/snap-stanford/graphwave) for the open access of the implementations of their methods.
 
 ### Miscellaneous
+- Please send any questions you might have about the code and/or the algorithm to <xuew.ma@gmail.com>.
 
-Please send any questions you might have about the code and/or the algorithm to <xuew.ma@gmail.com>.
+- *Note:* This is only a reference implementation of the framework RiWalk.
 
-*Note:* This is only a reference implementation of the framework RiWalk.
+###  Citation
+
+```
+@inproceedings{xuewma2019riwalk,
+  title={RiWalk: Fast Structural Node Embedding via Role Identification},
+  author={Xuewei Ma, Geng Qin, Zhiyang Qiu, Mingxin Zheng, Zhe Wang},
+  booktitle={2019 IEEE International Conference on Data Mining (ICDM)},
+  organization={IEEE},
+  year={2019}
+}
+```
