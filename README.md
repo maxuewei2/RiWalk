@@ -55,13 +55,4 @@ We would like to thank the authors of [node2vec](https://github.com/aditya-grove
 - *Note:* This is only a reference implementation of the framework RiWalk.
 
 ###  Citation
-
-```
-@inproceedings{xuewma2019riwalk,
-  title={RiWalk: Fast Structural Node Embedding via Role Identification},
-  author={Xuewei Ma, Geng Qin, Zhiyang Qiu, Mingxin Zheng, Zhe Wang},
-  booktitle={2019 IEEE International Conference on Data Mining (ICDM)},
-  organization={IEEE},
-  year={2019}
-}
-```
+[https://dblp.org/rec/bibtex/conf/icdm/MaQQZW19](https://dblp.org/rec/bibtex/conf/icdm/MaQQZW19)
