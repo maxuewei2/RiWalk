@@ -57,6 +57,9 @@ def parse_args():
     parser.add_argument('--flag', nargs='?', default='sp',
                         help='Flag indicating using RiWalk-SP(sp) or RiWalk-WL(wl). Default is sp.')
 
+    parser.add_argument('--discount', default=True, type=bool,
+                        help='Flag indicating using discount.')
+
     return parser.parse_args()
 
 
