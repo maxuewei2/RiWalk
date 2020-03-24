@@ -8,12 +8,27 @@ ICDM, 2019
 """
 
 import argparse
+import json
+import time
 import RiWalkGraph
 from gensim.models import Word2Vec
 from gensim.models.keyedvectors import Word2VecKeyedVectors
 import networkx as nx
 import os
 import glob
+import logging
+import sys
+
+
+def debug(type_, value, tb):
+    if hasattr(sys, 'ps1') or not sys.stderr.isatty():
+        sys.__excepthook__(type_, value, tb)
+    else:
+        import traceback
+        import pdb
+        traceback.print_exception(type_, value, tb)
+        print(u"\n")
+        pdb.pm()
 
 
 def parse_args():
@@ -52,10 +67,22 @@ def parse_args():
     parser.add_argument('--flag', nargs='?', default='sp',
                         help='Flag indicating using RiWalk-SP(sp) or RiWalk-WL(wl). Default is sp.')
 
+    parser.add_argument('--without-discount', action='store_true', default=False,
+                        help='Flag indicating not using discount.')
+
+    parser.add_argument("--debug", dest="debug", action='store_true', default=False,
+                        help="drop a debugger if an exception is raised.")
+
+    parser.add_argument("-l", "--log", dest="log", default="DEBUG",
+                        help="Log verbosity level. Default is DEBUG.")
+
     return parser.parse_args()
 
 
 class Sentences(object):
+    """
+    a wrapper of random walk files to feed to word2vec
+    """
     def __init__(self, file_names):
         self.file_names = file_names
 
@@ -95,34 +122,70 @@ class RiWalk:
         workers = self.args.workers
         iter_num = self.args.iter
 
+        logging.debug('begin learning embeddings')
+        learning_begin_time = time.time()
+
         walk_files = glob.glob('walks/__random_walks_*.txt')
         sentences = Sentences(walk_files)
-        model = Word2Vec(sentences, size=dim, window=window_size, min_count=0, sg=1, workers=workers, iter=iter_num)
+        model = Word2Vec(sentences, size=dim, window=window_size, min_count=0, sg=1, hs=0, workers=workers, iter=iter_num)
+
+        learning_end_time = time.time()
+        logging.debug('done learning embeddings')
+        logging.debug('learning time: {}'.format(learning_end_time - learning_begin_time))
+        print('learning_time', learning_end_time - learning_begin_time, flush=True)
         return model.wv
 
     def read_graph(self):
+        logging.debug('begin reading graph')
+        read_begin_time = time.time()
+
         input_file_name = self.args.input
         nx_g = nx.read_edgelist(input_file_name, nodetype=int, create_using=nx.DiGraph())
         for edge in nx_g.edges():
             nx_g[edge[0]][edge[1]]['weight'] = 1
         nx_g = nx_g.to_undirected()
+
+        logging.debug('done reading graph')
+        read_end_time = time.time()
+        logging.debug('read time: {}'.format(read_end_time - read_begin_time))
         return nx_g
 
     def preprocess_graph(self, nx_g):
         """
         1. relabel nodes with 0,1,2,3,...,N.
-        2. convert graph to adjacency representation as a list of tuples.
+        2. convert graph to adjacency representation as a list of lists.
         """
+        logging.debug('begin preprocessing graph')
+        preprocess_begin_time = time.time()
+
         mapping = {_: i for i, _ in enumerate(nx_g.nodes())}
         nx_g = nx.relabel_nodes(nx_g, mapping)
-        nx_g = [tuple(nx_g.neighbors(_)) for _ in range(len(nx_g))]
+        nx_g = [list(nx_g.neighbors(_)) for _ in range(len(nx_g))]
 
+        logging.info('#nodes: {}'.format(len(nx_g)))
+        logging.info('#edges: {}'.format(sum([len(_) for _ in nx_g]) // 2))
+
+        logging.debug('done preprocessing')
+        logging.debug('preprocess time: {}'.format(time.time() - preprocess_begin_time))
         return nx_g, mapping
 
     def learn(self, nx_g, mapping):
         g = RiWalkGraph.RiGraph(nx_g, self.args)
 
-        g.process_random_walks()
+        logging.debug('begin sampling')
+        sampling_begin_time = time.time()
+
+        walk_time, bfs_time, ri_time, walks_writing_time = g.process_random_walks()
+
+        sampling_end_time = time.time()
+        logging.debug('done sampling')
+        logging.debug('sampling time: {}'.format(sampling_end_time - sampling_begin_time))
+        print('sampling_time', sampling_end_time - sampling_begin_time, flush=True)
+        print('walk_time', walk_time, flush=True)
+        print('bfs_time', bfs_time, flush=True)
+        print('ri_time', ri_time, flush=True)
+        print('walks_writing_time', walks_writing_time, flush=True)
+        print('role_identification_time', ri_time + bfs_time, flush=True)
 
         wv = self.learn_embeddings()
 
@@ -134,15 +197,33 @@ class RiWalk:
 
     def riwalk(self):
         nx_g = self.read_graph()
+        read_end_time = time.time()
         nx_g, mapping = self.preprocess_graph(nx_g)
-        return self.learn(nx_g, mapping)
+        wv = self.learn(nx_g, mapping)
+        return wv, time.time() - read_end_time
 
 
 def main():
     args = parse_args()
-    print(vars(args))
-    wv = RiWalk(args).riwalk()
+    numeric_level = getattr(logging, args.log.upper(), None)
+
+    LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+    DATE_FORMAT = "%m/%d/%Y %H:%M:%S %p"
+
+    os.system('rm -f RiWalk.log')
+    logging.basicConfig(filename='RiWalk.log', level=numeric_level, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+
+    logging.info(str(vars(args)))
+    if args.debug:
+        sys.excepthook = debug
+
+    wv, total_time = RiWalk(args).riwalk()
+
+    write_begin_time = time.time()
     wv.save_word2vec_format(fname=args.output, binary=False)
+    logging.debug('writing time: {}'.format(time.time() - write_begin_time))
+
+    json.dump({'time': total_time}, open(args.output.replace('.emb', '_time.json'), 'w'))
 
 
 if __name__ == '__main__':
