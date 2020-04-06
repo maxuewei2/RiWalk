@@ -50,9 +50,8 @@ where dim1, ... , dimd is the *d*-dimensional representation learned by RiWalk.
 We would like to thank the authors of [node2vec](https://github.com/aditya-grover/node2vec), [struc2vec](https://github.com/leoribeiro/struc2vec) and [GraphWave](https://github.com/snap-stanford/graphwave) for the open access of the implementations of their methods.
 
 ### Miscellaneous
-- We also provide a faster variation of RiWalk in `src/FastRiWalk.py`.
+- We also provide a faster variation of RiWalk in `src/FastRiWalk.py` and  `src/FastRiGraph.py`.
 - Please send any questions you might have about the code and/or the algorithm to <xuew.ma@gmail.com>.
-
 - *Note:* This is only a reference implementation of the framework RiWalk.
 
 ###  Citation
