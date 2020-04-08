@@ -137,9 +137,8 @@ void ReadData() {
     fclose(fin);
     printf("Number of nodes: %d          \n", num_nodes);
 
-    int *nodes_ngbr_count = (int *) malloc(num_nodes * sizeof(int));
+    int *nodes_ngbr_count = (int *) calloc(num_nodes, sizeof(int));
     for (int i = 0; i < num_nodes; i++) {
-        nodes_ngbr_count[i] = 0;
         nodes[i].ngbrs = (int *) malloc(nodes[i].degree * sizeof(int));
     }
     for (bigint i = 0; i < num_edges; i++) {
@@ -158,14 +157,14 @@ void ReadData() {
  * Save the walk in {walks}.
  * Save the length of the walk in {walk_len}*/
 int SimulateWalk(node *g, int root, const int *tmp_list, int *walks, int *walk_len, int n) {
-    walks[n * walk_length] = root;
-    int current = root, next, i;
+    walks += (n * walk_length);
+    walks[0] = root;
+    int current = root, i;
     for (i = 1; i < walk_length; i++) {
         int tl = tmp_list[current];
         if (tl != 0) {
-            next = g[current].ngbrs[rand() % tl];
-            walks[n * walk_length + i] = next;
-            current = next;
+            current = g[current].ngbrs[rand() % tl];
+            walks[i] = current;
         } else {
             break;
         }
@@ -268,8 +267,12 @@ void SpWalk(node *g, int v, int *walks, const int *walk_len, int n_bak, int n, c
 }
 
 void WriteWalks(int part, int write_count, const int *walks, int n, const int *walk_len) {
+    if(n==0) {
+        return ;
+    }
     // shuffle random walks
     int *permutation = (int *) malloc(n * sizeof(int));
+    //memset(permutation, -1, n * sizeof(int));
     int x, i, j;
     for (i = 0; i < n; i++) {
         permutation[i] = i;
@@ -292,22 +295,26 @@ void WriteWalks(int part, int write_count, const int *walks, int n, const int *w
         }
         fprintf(fout, "\n");
     }
+    fclose(fout);
+    free(permutation);
 }
 
 /* deepcopy a graph. but the names of nodes are not deepcopied*/
 node *CopyGraphWithoutName() {
     node *g = (node *) malloc(num_nodes * sizeof(node));
-    memcpy(g, nodes, num_nodes * sizeof(node));
     if (g == NULL) {
         perror("memory allocation error.\n");
         exit(-1);
     }
+    //memset(g, 0, num_nodes * sizeof(node));
+    memcpy(g, nodes, num_nodes * sizeof(node));
     for (int i = 0; i < num_nodes; i++) {
         g[i].ngbrs = (int *) malloc(nodes[i].degree * sizeof(int));
         if (g[i].ngbrs == NULL) {
             perror("memory allocation error.\n");
             exit(-1);
         }
+        //memset(g[i].ngbrs, 0, nodes[i].degree * sizeof(int));
         memcpy(g[i].ngbrs, nodes[i].ngbrs, nodes[i].degree * sizeof(int));
     }
     return g;
@@ -320,25 +327,41 @@ void FreeGraph(node *g) {
     free(g);
 }
 
+void FreeThread(node *g, int *visited, int *tmp_list, int *ngbrs, int *distance, int *walks, int *walk_len) {
+    free(tmp_list);
+    free(visited);
+    free(ngbrs);
+    free(distance);
+    free(walks);
+    free(walk_len);
+    FreeGraph(g);
+}
+
 void RiWalkThread(int part) {
     node *g = CopyGraphWithoutName();
-    int *tmp_list = (int *) malloc(num_nodes * sizeof(int));
+    int *tmp_list = (int *) malloc(num_nodes*sizeof(int));
     int *visited = (int *) malloc(num_nodes * sizeof(int));
-    int *ngbrs = (int *) malloc(num_nodes * sizeof(int));
-    int *distance = (int *) malloc(num_nodes * sizeof(int));
-    for (int i = 0; i < num_nodes; i++) {
-        tmp_list[i] = 0;
-        visited[i] = -1;
+    int *ngbrs = (int *) malloc(num_nodes* sizeof(int));
+    int *distance = (int *) malloc(num_nodes* sizeof(int));
+    int *walks = (int *) malloc(MAX_NUM_WALKS * walk_length* sizeof(int));
+    int *walk_len = (int *) malloc(MAX_NUM_WALKS* sizeof(int));
+    if (visited == NULL || tmp_list == NULL || ngbrs == NULL || distance == NULL || walks == NULL || walk_len == NULL) {
+        perror("memory allocation error.\n");
+        exit(-1);
     }
-    int *walks = (int *) malloc(MAX_NUM_WALKS * walk_length * sizeof(int));
-    int *walk_len = (int *) malloc(MAX_NUM_WALKS * sizeof(int));
+    memset(visited, -1, num_nodes * sizeof(int));
+    memset(tmp_list, 0, num_nodes * sizeof(int));
+    memset(ngbrs, -1, num_nodes * sizeof(int));
+    memset(distance, -1, num_nodes * sizeof(int));
+    memset(walks, -1, MAX_NUM_WALKS * walk_length * sizeof(int));
+    memset(walk_len, -1, MAX_NUM_WALKS * sizeof(int));
     int n = 0, write_count = 0;
     real bfs_time_ = 0, walk_time_ = 0, ri_time_ = 0, secs;
     struct timeval start, stop;
-    int node_count=0,v;
-    while(riwalk_i<num_nodes){
-        v=atomic_fetch_add_explicit(&riwalk_i, 1, memory_order_relaxed);
-        if(v>num_nodes)break;
+    int node_count = 0, v;
+    while (riwalk_i < num_nodes) {
+        v = atomic_fetch_add_explicit(&riwalk_i, 1, memory_order_relaxed);
+        if (v > num_nodes)break;
         int n_bak = n;
         gettimeofday(&start, NULL);
         BFS(g, v, visited, tmp_list, ngbrs, distance);
@@ -365,20 +388,14 @@ void RiWalkThread(int part) {
             n = 0;
             write_count++;
         }
-        if(v%1000==0){
-            printf("RiWalk process %.3lf%%%c",v*100/(double)num_nodes,13);
+        if (v % 1000 == 10) {
+            printf("RiWalk process %.3lf%%%c", v * 100 / (double) num_nodes, 13);
             fflush(stdout);
         }
         node_count++;
     }
     WriteWalks(part, write_count, walks, n, walk_len);
-    free(tmp_list);
-    free(visited);
-    free(ngbrs);
-    free(distance);
-    free(walks);
-    free(walk_len);
-    FreeGraph(g);
+    FreeThread(g, visited, tmp_list, ngbrs, distance, walks, walk_len);
     printf("part %d processed %d nodes in total\n", part, node_count);
     printf("part %d bfs time %f\n", part, bfs_time_);
     printf("part %d ri time %f\n", part, ri_time_);
@@ -571,5 +588,6 @@ int main(int argc, char **argv) {
         exit(-1);
     }
     fprintf(f, "{\"time\":%f}", bfs_time + ri_time + walk_time + learning_time);
+    fclose(f);
     return 0;
 }
