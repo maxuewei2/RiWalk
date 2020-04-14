@@ -20,7 +20,7 @@ The RiWalk algorithm learns continuous representations for nodes in graphs. The 
 RiWalk decouples the structural embedding problem into a role identification procedure and a network embedding procedure. <br/>
 The key idea of RiWalk can be illustrated as in the following picture. 
 <p align="center">
-<img style="float: center;" src="figures/key-idea.png">
+<img style="float: center" src="figures/key-idea.png">
 </p>
 
 Two nodes a and u residing far apart in a network have similar local topologies but totally different context nodes. However, after the role identification procedure, they have similar context and are indirectly densely connected, thus typical network embedding methods can be directly applied to learn structural embeddings.
@@ -34,9 +34,13 @@ This repository provides several different implementations of RiWalk:
 #### Full Command List
 The full list of command line options is available with 
 ```	bash
-    python3 src/RiWalk/RiWalk.py --help                 # for RiWalk
-    python3 src/RiWalkRW/RiWalkRW.py --help    # for RiWalkRW
-    src/RiWalk-C/RiWalk                                                   # for RiWalk-C
+# RiWalk
+python3 src/RiWalk/RiWalk.py --help  
+# RiWalkRW
+python3 src/RiWalkRW/RiWalkRW.py --help  
+# RiWalk-C
+gcc -lm -pthread -Ofast -march=native -Wall -ffast-math -Wno-unused-result src/RiWalk-C/RiWalk.c -o src/RiWalk-C/RiWalk
+src/RiWalk-C/RiWalk  
 ```
 
 #### Example
@@ -45,18 +49,18 @@ We provide an example running script for the actor data set in [train_actor.sh](
 #### Input
 The supported input format is an edgelist:
 ```text
-	node1_id_int node2_id_int
+node1_id_int node2_id_int
 ```
 
 #### Output
 The output file has *n+1* lines for a graph with *n* vertices. 
 The first line has the following format:
 ```text
-	num_of_nodes dim_of_representation
+num_of_nodes dim_of_representation
 ```
 The next *n* lines are as follows:
 ```text	
-	node_id dim1 dim2 ... dimd
+node_id dim1 dim2 ... dimd
 ```
 where dim1, ... , dimd is the *d*-dimensional representation learned by RiWalk.
 
