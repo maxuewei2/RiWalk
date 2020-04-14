@@ -16,11 +16,11 @@ class Sentences(object):
     def __iter__(self):
         fs = []
         for file_name in self.file_names:
-            fs.append(open(file_name))
+            fs.append(open(file_name,'r'))
         while True:
             flag = 0
             for i, f in enumerate(fs):
-                line = f.readline()
+                line = f.readline().strip()
                 if line != '':
                     flag = 1
                     yield line.split()
