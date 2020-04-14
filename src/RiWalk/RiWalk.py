@@ -131,7 +131,7 @@ class RiWalk:
 
         learning_end_time = time.time()
         logging.debug('done learning embeddings')
-        logging.debug('learning time: {}'.format(learning_end_time - learning_begin_time))
+        logging.debug('learning_time: {}'.format(learning_end_time - learning_begin_time))
         print('learning_time', learning_end_time - learning_begin_time, flush=True)
         return model.wv
 
@@ -179,7 +179,7 @@ class RiWalk:
 
         sampling_end_time = time.time()
         logging.debug('done sampling')
-        logging.debug('sampling time: {}'.format(sampling_end_time - sampling_begin_time))
+        logging.debug('sampling_time: {}'.format(sampling_end_time - sampling_begin_time))
         print('sampling_time', sampling_end_time - sampling_begin_time, flush=True)
         print('walk_time', walk_time, flush=True)
         print('bfs_time', bfs_time, flush=True)

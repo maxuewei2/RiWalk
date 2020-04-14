@@ -10,7 +10,7 @@ ICDM, 2019
 import argparse
 import json
 import time
-import FastRiGraph
+import RiWalkRWGraph
 from gensim.models import Word2Vec
 from gensim.models.keyedvectors import Word2VecKeyedVectors
 import networkx as nx
@@ -128,7 +128,7 @@ class RiWalk:
 
         learning_end_time = time.time()
         logging.debug('done learning embeddings')
-        logging.debug('learning time: {}'.format(learning_end_time - learning_begin_time))
+        logging.debug('learning_time: {}'.format(learning_end_time - learning_begin_time))
         print('learning_time', learning_end_time - learning_begin_time, flush=True)
         return model.wv
 
@@ -144,7 +144,7 @@ class RiWalk:
 
         logging.debug('done reading graph')
         read_end_time = time.time()
-        logging.debug('read time: {}'.format(read_end_time - read_begin_time))
+        logging.debug('read_time: {}'.format(read_end_time - read_begin_time))
         return nx_g
 
     def preprocess_graph(self, nx_g):
@@ -167,7 +167,7 @@ class RiWalk:
         return nx_g, mapping
 
     def learn(self, nx_g, mapping):
-        g = FastRiGraph.RiGraph(nx_g, self.args)
+        g = RiWalkRWGraph.RiGraph(nx_g, self.args)
 
         logging.debug('begin sampling')
         sampling_begin_time = time.time()
@@ -176,7 +176,7 @@ class RiWalk:
 
         sampling_end_time = time.time()
         logging.debug('done sampling')
-        logging.debug('sampling time: {}'.format(sampling_end_time - sampling_begin_time))
+        logging.debug('sampling_time: {}'.format(sampling_end_time - sampling_begin_time))
         print('sampling_time', sampling_end_time - sampling_begin_time, flush=True)
         print('walk_time', walk_time, flush=True)
         print('bfs_time', bfs_time, flush=True)

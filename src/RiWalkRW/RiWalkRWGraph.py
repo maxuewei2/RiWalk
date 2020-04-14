@@ -2,7 +2,6 @@
 import time
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import random
 import logging
 from collections import defaultdict, deque
 
@@ -19,8 +18,7 @@ class RiGraph:
 
         self.num_nodes = len(self.g)
         self.degrees_ = tuple([len(self.g[_]) for _ in range(len(self.g))])
-
-        self.rand = random.Random()
+        self.logDegrees_ = tuple(np.asarray(self.degrees_).tolist())
 
     def bfs(self, rws, root, visited):
         """
@@ -68,11 +66,12 @@ class RiGraph:
         :return: sp_dict, a dictionary of {node: its_new_identifier} pairs
         """
         layer_list = [node_layer_dict[node] for node in nb_nodes]
-        degree_list = [self.degrees_[node] for node in nb_nodes]
-        root_degree = self.degrees_[root]
         if self.discount:
-            root_degree = simple_log2(root_degree + 1)
-            degree_list = np.log2(np.asarray(degree_list) + 1).astype(np.int32).tolist()
+            root_degree = self.logDegrees_[root]
+            degree_list = [self.logDegrees_[node] for node in nb_nodes]
+        else:
+            root_degree = self.degrees_[root]
+            degree_list = [self.degrees_[node] for node in nb_nodes]
         sp_dict = {node_: hash((root_degree, layer_, degree_)) for node_, layer_, degree_ in
                    zip(nb_nodes, layer_list, degree_list)}
         return sp_dict
@@ -102,23 +101,25 @@ class RiGraph:
         wl_dict = {_: hash((root_x, node_layer_dict[_], tuple(x_lists[node_index_dict[_]]))) for _ in nb_nodes}
         return wl_dict
 
-    def simulate_walk(self, walk_length, root, rand):
+    def simulate_walk(self, walk_length, root):
         walk = [root]
         g = self.g
-        while len(walk) < walk_length:
+        rand = np.random.randint(self.num_nodes, size=walk_length)
+        for i in range(walk_length-1):
             cur = walk[-1]
             cur_nbrs = g[cur]
-            if cur_nbrs:
-                next_node = rand.choice(cur_nbrs)
+            lc = len(cur_nbrs)
+            if lc:
+                next_node = cur_nbrs[rand[i] % lc]
                 walk.append(next_node)
             else:
                 break
         return walk
 
-    def simulate_walks_for_node(self, root, num_walks, walk_length, rand):
+    def simulate_walks_for_node(self, root, num_walks, walk_length):
         walks = []
         for walk_iter in range(num_walks):
-            walk = self.simulate_walk(walk_length=walk_length, root=root, rand=rand)
+            walk = self.simulate_walk(walk_length=walk_length, root=root)
             walks.append(walk)
         return walks
 
@@ -170,8 +171,6 @@ def save_random_walks(walks, part, i):
 def process_random_walks_chunk(ri_graph, vertices, part_id, num_walks, walk_length):
     walks_all = []
     i = 0
-    rand = ri_graph.rand
-
     visited = [-1] * ri_graph.num_nodes
     walk_time_ = 0
     bfs_time_ = 0
@@ -179,7 +178,7 @@ def process_random_walks_chunk(ri_graph, vertices, part_id, num_walks, walk_leng
     walks_writing_time_ = 0
     for count, v in enumerate(vertices):
         walk_begin_time_ = time.time()
-        walks = ri_graph.simulate_walks_for_node(v, num_walks, walk_length, rand)
+        walks = ri_graph.simulate_walks_for_node(v, num_walks, walk_length)
         walk_end_time_ = time.time()
         walk_time_ += (walk_end_time_ - walk_begin_time_)
 

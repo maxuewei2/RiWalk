@@ -10,29 +10,52 @@ For more details, refer to the paper:
 #include <pthread.h>
 #include <sys/time.h>
 #include <stdatomic.h>
+#include <ctype.h>
+#include <limits.h>
+#include <stdint.h>
 
 #define MAX_STRING 500
-#define MAX_NUM_WALKS 10000000
+#define MAX_NUM_WALKS 1000000
 #define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
 
 typedef float real;                    // Precision of float numbers
 typedef long long bigint;
-typedef struct node {
-    char *name;
-    int *ngbrs;
-    int degree;
-} node;
-
 const int hash_table_size = 30000000;
 
 char network_file[MAX_STRING], embedding_file[MAX_STRING], walk_dir[MAX_STRING], flag[20];
 int num_threads = 4, dim = 128, until_k = 4, num_walks = 80, walk_length = 10, window_size = 10, iter_num = 5, discount = 1;
 int *node_name_hash_table;
-node *nodes;
+int **graph;
+int *degrees;
+int *logDegrees;
+char **names;
 int max_num_nodes = 1000, num_nodes;
 bigint num_edges;
 real *bfs_times, *ri_times, *walk_times;
 atomic_int riwalk_i;
+
+// https://software.intel.com/en-us/articles/fast-random-number-generator-on-the-intel-pentiumr-4-processor/
+unsigned int g_seed = 131;
+inline int fastrand() {
+    g_seed = (214013*g_seed+2531011);
+    return (g_seed>>16)&0x7FFF;
+}
+
+
+
+/* These state variables must be initialised so that they are not all zero. *//*
+uint32_t w=234543543, x=124325543, y=1124342323, z=564342244;
+
+uint32_t xorshift128(void)
+{
+    uint32_t t = x;
+    t ^= t << 11U;
+    t ^= t >> 8U;
+    x = y; y = z; z = w;
+    w ^= w >> 19U;
+    w ^= t;
+    return w;
+}*/
 
 /* Build a hash table, mapping each node name to a unique node id */
 unsigned int Hash(char *key, int n) {
@@ -65,7 +88,7 @@ int SearchHashTable(char *key) {
     unsigned int addr = Hash(key, 0);
     while (1) {
         if (node_name_hash_table[addr] == -1) return -1;
-        if (!strcmp(key, nodes[node_name_hash_table[addr]].name)) return node_name_hash_table[addr];
+        if (!strcmp(key, names[node_name_hash_table[addr]])) return node_name_hash_table[addr];
         addr = (addr + 1) % hash_table_size;
     }
 }
@@ -73,18 +96,17 @@ int SearchHashTable(char *key) {
 int AddNode(char *name) {
     unsigned long length = strlen(name) + 1;
     if (length > MAX_STRING) length = MAX_STRING;
-    nodes[num_nodes].name = (char *) calloc(length, sizeof(char));
-    strncpy(nodes[num_nodes].name, name, length - 1);
-    nodes[num_nodes].degree = 0;
+    names[num_nodes] = (char *) calloc(length, sizeof(char));
+    strncpy(names[num_nodes], name, length - 1);
     num_nodes++;
     if (num_nodes + 2 >= max_num_nodes) {
         max_num_nodes = (int) (max_num_nodes * 1.5);
-        node *nodes_tmp = (node *) realloc(nodes, max_num_nodes * sizeof(node));
-        if (nodes_tmp == NULL) {
+        char **names_tmp = (char **) realloc(names, max_num_nodes * sizeof(char *));
+        if (names_tmp == NULL) {
             perror("Error: memory allocation failed!\n");
             exit(1);
         }
-        nodes = nodes_tmp;
+        names = names_tmp;
     }
     InsertHashTable(name, num_nodes - 1);
     return num_nodes - 1;
@@ -126,26 +148,33 @@ void ReadData() {
 
         vid = SearchHashTable(name_v1);
         if (vid == -1) vid = AddNode(name_v1);
-        nodes[vid].degree += 1;
         edge_source_id[k] = vid;
 
         vid = SearchHashTable(name_v2);
         if (vid == -1) vid = AddNode(name_v2);
-        nodes[vid].degree += 1;
         edge_target_id[k] = vid;
     }
     fclose(fin);
     printf("Number of nodes: %d          \n", num_nodes);
 
+    degrees = (int *) calloc(num_nodes, sizeof(int));
+    for (bigint i = 0; i < num_edges; i++) {
+        int node1 = edge_source_id[i], node2 = edge_target_id[i];
+        degrees[node1]++;
+        degrees[node2]++;
+    }
+    graph = (int **) calloc(num_nodes, sizeof(int *));
+    logDegrees = (int *) calloc(num_nodes, sizeof(int));
     int *nodes_ngbr_count = (int *) calloc(num_nodes, sizeof(int));
     for (int i = 0; i < num_nodes; i++) {
-        nodes[i].ngbrs = (int *) malloc(nodes[i].degree * sizeof(int));
+        graph[i] = (int *) malloc(degrees[i] * sizeof(int));
+        logDegrees[i] = LOG2(degrees[i] + 1);
     }
     for (bigint i = 0; i < num_edges; i++) {
         int node1 = edge_source_id[i], node2 = edge_target_id[i];
-        nodes[node1].ngbrs[nodes_ngbr_count[node1]] = node2;
+        graph[node1][nodes_ngbr_count[node1]] = node2;
         nodes_ngbr_count[node1]++;
-        nodes[node2].ngbrs[nodes_ngbr_count[node2]] = node1;
+        graph[node2][nodes_ngbr_count[node2]] = node1;
         nodes_ngbr_count[node2]++;
     }
     free(edge_source_id);
@@ -156,14 +185,14 @@ void ReadData() {
 /* Simulate a random walk from {root}.
  * Save the walk in {walks}.
  * Save the length of the walk in {walk_len}*/
-int SimulateWalk(node *g, int root, const int *tmp_list, int *walks, int *walk_len, int n) {
+int SimulateWalk(int **g, int root, const int *tmp_list, int *walks, int *walk_len, int n) {
     walks += (n * walk_length);
     walks[0] = root;
     int current = root, i;
     for (i = 1; i < walk_length; i++) {
         int tl = tmp_list[current];
         if (tl != 0) {
-            current = g[current].ngbrs[rand() % tl];
+            current = g[current][fastrand()%tl];
             walks[i] = current;
         } else {
             break;
@@ -173,7 +202,7 @@ int SimulateWalk(node *g, int root, const int *tmp_list, int *walks, int *walk_l
     return n + 1;
 }
 
-int SimulateWalksForNode(node *g, int root, int *tmp_list, int *walks, int *walk_len, int n) {
+int SimulateWalksForNode(int **g, int root, int *tmp_list, int *walks, int *walk_len, int n) {
     for (int i = 0; i < num_walks; i++) {
         n = SimulateWalk(g, root, tmp_list, walks, walk_len, n);
     }
@@ -189,11 +218,11 @@ void swap(int *a, int *b) {
 /* Given the anchor node {v}, the context node {nbj},
  * make the first {tmp_list[nbj]} nodes of {g[nbj].ngbrs} are within {until_k} hops from {v}
  * */
-void ProcessNodeInTheLastLayer(node *g, int v, int nbj, const int *visited, int *tmp_list) {
+void ProcessNodeInTheLastLayer(int **g, int v, int nbj, const int *visited, int *tmp_list) {
     int p = 0;
-    int ln = g[nbj].degree - 1;
+    int ln = degrees[nbj] - 1;
     int q = ln;
-    int *ngbrs = g[nbj].ngbrs;
+    int *ngbrs = g[nbj];
     while (p <= q) {
         while (q >= 0 && visited[ngbrs[q]] != v)
             q -= 1;
@@ -207,7 +236,7 @@ void ProcessNodeInTheLastLayer(node *g, int v, int nbj, const int *visited, int 
 
 /* breadth-first search graph {g} from {v} and mark each context node {nbl} with {visited[nbl]=v}.
  * save the context nodes in {ngbrs[:nbgrCount]} and their distance from {v} in {distance}.*/
-int BFS(node *g, int v, int *visited, int *tmp_list, int *ngbrs, int *distance) {
+int BFS(int **g, const int *degree_list, int v, int *visited, int *tmp_list, int *ngbrs, int *distance) {
     visited[v] = v;
     ngbrs[0] = v;
     distance[v] = 0;
@@ -215,11 +244,11 @@ int BFS(node *g, int v, int *visited, int *tmp_list, int *ngbrs, int *distance) 
     int ngbrCount = 1;
     while (toVisitPtr < ngbrCount) {
         int nbj = ngbrs[toVisitPtr];
-        if (distance[nbj] == until_k) {
+        if (tmp_list != NULL && distance[nbj] == until_k) {
             ProcessNodeInTheLastLayer(g, v, nbj, visited, tmp_list);
         } else {
-            for (int i = 0; i < g[nbj].degree; i++) {
-                int nbl = g[nbj].ngbrs[i];
+            for (int i = 0; i < degree_list[nbj]; i++) {
+                int nbl = g[nbj][i];
                 if (visited[nbl] != v) {
                     visited[nbl] = v;
                     ngbrs[ngbrCount] = nbl;
@@ -227,7 +256,9 @@ int BFS(node *g, int v, int *visited, int *tmp_list, int *ngbrs, int *distance) 
                     ngbrCount++;
                 }
             }
-            tmp_list[nbj] = g[nbj].degree;
+            if (tmp_list != NULL) {
+                tmp_list[nbj] = degrees[nbj];
+            }
         }
         toVisitPtr++;
     }
@@ -235,11 +266,11 @@ int BFS(node *g, int v, int *visited, int *tmp_list, int *ngbrs, int *distance) 
 }
 
 /* calculate new identifier for node {nb}*/
-int GetSp(node *g, int nb, int hash_n, int *ri_arr, const int *distance) {
+int GetSp(int nb, int hash_n, int *ri_arr, const int *distance) {
     int dis = distance[nb];
-    int dgr = g[nb].degree;
+    int dgr = degrees[nb];
     if (discount) {
-        dgr = LOG2(dgr + 1);
+        dgr = logDegrees[nb];
     }
     ri_arr[1] = dis;
     ri_arr[2] = dgr;
@@ -247,10 +278,11 @@ int GetSp(node *g, int nb, int hash_n, int *ri_arr, const int *distance) {
 }
 
 /* replace nodes in random walks with their new identifiers*/
-void SpWalk(node *g, int v, int *walks, const int *walk_len, int n_bak, int n, const int *distance, int *tmp_list) {
+void SpWalk(int v, int *walks, const int *walk_len, int n_bak, int n, const int *distance, int *tmp_list, int* visited) {
     tmp_list[v] = v;
-    int root_dgr = g[v].degree, len, tmp, nb;
-    if (discount) { root_dgr = LOG2(root_dgr + 1); }
+    visited[v]=-v;
+    int root_dgr = degrees[v], len, tmp, nb;
+    if (discount) { root_dgr = logDegrees[v]; }
     int ri_arr[4] = {root_dgr, 0, 0, 0};
     int hash_n = sizeof(int) / sizeof(char) * 3;
     for (int i = n_bak; i < n; i++) {
@@ -258,8 +290,9 @@ void SpWalk(node *g, int v, int *walks, const int *walk_len, int n_bak, int n, c
         for (int j = 0; j < len; j++) {
             tmp = i * walk_length + j;
             nb = walks[tmp];
-            if (nb != v && tmp_list[nb] >= 0) {
-                tmp_list[nb] = GetSp(g, nb, hash_n, ri_arr, distance);
+            if (visited[nb]!=-v) {
+                tmp_list[nb] = GetSp(nb, hash_n, ri_arr, distance);
+                visited[nb]=-v;
             }
             walks[tmp] = tmp_list[nb];
         }
@@ -267,8 +300,8 @@ void SpWalk(node *g, int v, int *walks, const int *walk_len, int n_bak, int n, c
 }
 
 void WriteWalks(int part, int write_count, const int *walks, int n, const int *walk_len) {
-    if(n==0) {
-        return ;
+    if (n == 0) {
+        return;
     }
     // shuffle random walks
     int *permutation = (int *) malloc(n * sizeof(int));
@@ -278,7 +311,7 @@ void WriteWalks(int part, int write_count, const int *walks, int n, const int *w
         permutation[i] = i;
     }
     for (i = 0; i < n; i++) {
-        swap(permutation + i, permutation + (rand() % n));
+        swap(permutation + i, permutation + (fastrand() % n));
     }
 
     char tmp[MAX_STRING];
@@ -300,34 +333,33 @@ void WriteWalks(int part, int write_count, const int *walks, int n, const int *w
 }
 
 /* deepcopy a graph. but the names of nodes are not deepcopied*/
-node *CopyGraphWithoutName() {
-    node *g = (node *) malloc(num_nodes * sizeof(node));
+int **CopyGraph() {
+    int **g = (int **) malloc(num_nodes * sizeof(int *));
     if (g == NULL) {
         perror("memory allocation error.\n");
         exit(-1);
     }
-    //memset(g, 0, num_nodes * sizeof(node));
-    memcpy(g, nodes, num_nodes * sizeof(node));
     for (int i = 0; i < num_nodes; i++) {
-        g[i].ngbrs = (int *) malloc(nodes[i].degree * sizeof(int));
-        if (g[i].ngbrs == NULL) {
+        g[i] = (int *) malloc(degrees[i] * sizeof(int));
+        if (g[i] == NULL) {
             perror("memory allocation error.\n");
             exit(-1);
         }
         //memset(g[i].ngbrs, 0, nodes[i].degree * sizeof(int));
-        memcpy(g[i].ngbrs, nodes[i].ngbrs, nodes[i].degree * sizeof(int));
+        memcpy(g[i], graph[i], degrees[i] * sizeof(int));
     }
     return g;
 }
 
-void FreeGraph(node *g) {
+void FreeGraph(int **g) {
+    if (g == NULL)return;
     for (int i = 0; i < num_nodes; i++) {
-        free(g[i].ngbrs);
+        free(g[i]);
     }
     free(g);
 }
 
-void FreeThread(node *g, int *visited, int *tmp_list, int *ngbrs, int *distance, int *walks, int *walk_len) {
+void FreeThread(int **g, int *visited, int *tmp_list, int *ngbrs, int *distance, int *walks, int *walk_len) {
     free(tmp_list);
     free(visited);
     free(ngbrs);
@@ -337,52 +369,137 @@ void FreeThread(node *g, int *visited, int *tmp_list, int *ngbrs, int *distance,
     FreeGraph(g);
 }
 
+//void GetSubGraphFromRW(int **g, const int *walks, const int *walk_len, int n_bak, int n, int *tmp_list, int *tmp1, int*visited) {
+//    memset(tmp_list, 0, num_nodes * sizeof(int));
+//    memset(tmp1, 0, num_nodes * sizeof(int));
+//    int node1, node2;
+//    for (int i = n_bak; i < n; i++) {
+//        for (int j = 1; j < walk_len[i]; j++) {
+//            node1 = walks[i * walk_length + j - 1];
+//            node2 = walks[i * walk_length + j];
+//            tmp_list[node1]++;
+//            tmp_list[node2]++;
+//        }
+//    }
+//    int *nodes_ngbr_count = tmp1;
+//    for (int i = n_bak; i < n; i++) {
+//        for (int j = 1; j < walk_len[i]; j++) {
+//            node1 = walks[i * walk_length + j - 1];
+//            node2 = walks[i * walk_length + j];
+//            g[node1][nodes_ngbr_count[node1]] = node2;
+//            nodes_ngbr_count[node1]++;
+//            g[node2][nodes_ngbr_count[node2]] = node1;
+//            nodes_ngbr_count[node2]++;
+//        }
+//    }
+//}
+
+void CalcDistanceRW(const int *walks, const int *walk_len, int n_bak, int n, int *distance) {
+    int node1, node2, dis1, dis2;
+//    for (int i = n_bak; i < n; i++) {
+//        const int *walks_ = walks + (i * walk_length);
+//        for (int j = 1; j < walk_len[i]; j++) {
+//            printf("%d %d ",walks_[j-1],walks_[j]);
+//        }
+//        printf("\n");
+//    }
+    for (int iter_i = 0; iter_i < 5; iter_i++) {
+        for (int i = n_bak; i < n; i++) {
+            const int *walks_ = walks + (i * walk_length);
+            distance[walks_[0]]=0;
+            for (int j = 1; j < walk_len[i]; j++) {
+                node1 = walks_[j - 1];
+                node2 = walks_[j];
+                dis1 = distance[node1];
+                dis2 = distance[node2];
+                if (dis1 < dis2) {
+                    distance[node2] = dis1 + 1;
+                } else {
+                    distance[node1] = dis1 > (dis2 + 1) ? (dis2 + 1) : dis1;
+                }
+            }
+        }
+    }
+//    for (int k = 0; k < num_nodes; ++k) {
+//        printf("%d ",distance[k]);
+//    }
+//    exit(0);
+}
+
 void RiWalkThread(int part) {
-    node *g = CopyGraphWithoutName();
-    int *tmp_list = (int *) malloc(num_nodes*sizeof(int));
-    int *visited = (int *) malloc(num_nodes * sizeof(int));
-    int *ngbrs = (int *) malloc(num_nodes* sizeof(int));
-    int *distance = (int *) malloc(num_nodes* sizeof(int));
-    int *walks = (int *) malloc(MAX_NUM_WALKS * walk_length* sizeof(int));
-    int *walk_len = (int *) malloc(MAX_NUM_WALKS* sizeof(int));
-    if (visited == NULL || tmp_list == NULL || ngbrs == NULL || distance == NULL || walks == NULL || walk_len == NULL) {
+    int **g = NULL;
+    int *ngbrs = NULL;
+    if (strcmp(flag, "sp") == 0) {
+        g = CopyGraph();
+        ngbrs=(int *) malloc(num_nodes * sizeof(int));
+        if (ngbrs == NULL) {
+            perror("memory allocation error.\n");
+            exit(-1);
+        }
+        memset(ngbrs, -1, num_nodes * sizeof(int));
+    }
+    int* visited=(int *) malloc(num_nodes * sizeof(int));
+    int *tmp_list = (int *) malloc(num_nodes * sizeof(int));
+    int *distance = (int *) malloc(num_nodes * sizeof(int));
+    int *walks = (int *) malloc(MAX_NUM_WALKS * walk_length * sizeof(int));
+    int *walk_len = (int *) malloc(MAX_NUM_WALKS * sizeof(int));
+    if (visited == NULL || tmp_list == NULL || distance == NULL || walks == NULL || walk_len == NULL) {
         perror("memory allocation error.\n");
         exit(-1);
     }
-    memset(visited, -1, num_nodes * sizeof(int));
     memset(tmp_list, 0, num_nodes * sizeof(int));
-    memset(ngbrs, -1, num_nodes * sizeof(int));
-    memset(distance, -1, num_nodes * sizeof(int));
     memset(walks, -1, MAX_NUM_WALKS * walk_length * sizeof(int));
     memset(walk_len, -1, MAX_NUM_WALKS * sizeof(int));
+    for (int i = 0; i < num_nodes; i++) {
+        distance[i] = INT_MAX-2;
+        visited[i]=num_nodes;
+    }
     int n = 0, write_count = 0;
     real bfs_time_ = 0, walk_time_ = 0, ri_time_ = 0, secs;
     struct timeval start, stop;
     int node_count = 0, v;
     while (riwalk_i < num_nodes) {
         v = atomic_fetch_add_explicit(&riwalk_i, 1, memory_order_relaxed);
-        if (v > num_nodes)break;
+        if (v >= num_nodes)break;
         int n_bak = n;
-        gettimeofday(&start, NULL);
-        BFS(g, v, visited, tmp_list, ngbrs, distance);
-        gettimeofday(&stop, NULL);
-        secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
-        bfs_time_ += secs;
+        if (strcmp(flag, "sp") == 0) {
+            gettimeofday(&start, NULL);
+            BFS(g, degrees, v, visited, tmp_list, ngbrs, distance);
+            gettimeofday(&stop, NULL);
+            secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
+            bfs_time_ += secs;
 
-        gettimeofday(&start, NULL);
-        n = SimulateWalksForNode(g, v, tmp_list, walks, walk_len, n);
-        gettimeofday(&stop, NULL);
-        secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
-        walk_time_ += secs;
+            gettimeofday(&start, NULL);
+            n = SimulateWalksForNode(g, v, tmp_list, walks, walk_len, n);
+            gettimeofday(&stop, NULL);
+            secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
+            walk_time_ += secs;
 
-        gettimeofday(&start, NULL);
-        if (strcmp(flag, "sp") == 0 || strcmp(flag, "SP") == 0 || strcmp(flag, "Sp") == 0) {
-            SpWalk(g, v, walks, walk_len, n_bak, n, distance, tmp_list);
+            gettimeofday(&start, NULL);
+            SpWalk(v, walks, walk_len, n_bak, n, distance, tmp_list, visited);
+            gettimeofday(&stop, NULL);
+            secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
+            ri_time_ += secs;
         }
-        gettimeofday(&stop, NULL);
-        secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
-        ri_time_ += secs;
+        if (strcmp(flag, "rwsp") == 0) {
+            gettimeofday(&start, NULL);
+            n = SimulateWalksForNode(graph, v, degrees, walks, walk_len, n);
+            gettimeofday(&stop, NULL);
+            secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
+            walk_time_ += secs;
 
+            gettimeofday(&start, NULL);
+            CalcDistanceRW(walks, walk_len, n_bak, n, distance);
+            gettimeofday(&stop, NULL);
+            secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
+            bfs_time_ += secs;
+
+            gettimeofday(&start, NULL);
+            SpWalk(v, walks, walk_len, n_bak, n, distance, tmp_list, visited);
+            gettimeofday(&stop, NULL);
+            secs = (double) (stop.tv_usec - start.tv_usec) / 1000000 + (double) (stop.tv_sec - start.tv_sec);
+            ri_time_ += secs;
+        }
         if (n + num_walks >= MAX_NUM_WALKS) {
             WriteWalks(part, write_count, walks, n, walk_len);
             n = 0;
@@ -443,7 +560,7 @@ void SaveEmbeddings() {
             fgets(tmp_str, sizeof(tmp_str), tmp_emb);
         } else {
             num++;
-            fprintf(emb_file, "%s ", nodes[node].name);
+            fprintf(emb_file, "%s ", names[node]);
             for (int j = 0; j < dim; j++) {
                 fscanf(tmp_emb, "%f", &tmp);
                 fprintf(emb_file, "%f ", tmp);
@@ -510,7 +627,7 @@ int main(int argc, char **argv) {
         printf("\t--iter <int>\n");
         printf("\t\tNumber of epochs in SGD. Default is 5.\n");
         printf("\t--flag flag\n");
-        printf("\t\tFlag indicating using RiWalk-SP(sp) or RiWalk-WL(wl). Default is sp.\n");
+        printf("\t\tFlag indicating using RiWalk-SP(sp) or RiWalk-RWSP(rwsp). Default is sp.\n");
         printf("\t--discount\n");
         printf("\t\tFlag indicating using or not using discount.\n");
 
@@ -528,6 +645,9 @@ int main(int argc, char **argv) {
     if ((i = ArgPos((char *) "--workers", argc, argv)) > 0) num_threads = atoi(argv[i + 1]);
     if ((i = ArgPos((char *) "--iter", argc, argv)) > 0) iter_num = atoi(argv[i + 1]);
     if ((i = ArgPos((char *) "--flag", argc, argv)) > 0) strcpy(flag, argv[i + 1]);
+    for (int j = 0; j < strlen(flag); j++) {
+        flag[j] = tolower(flag[j]);
+    }
     if ((i = ArgPos((char *) "--discount", argc, argv)) > 0) {
         if (strcmp(argv[i + 1], "true") == 0 || strcmp(argv[i + 1], "True") == 0) {
             discount = 1;
@@ -552,7 +672,7 @@ int main(int argc, char **argv) {
     printf("discount: %d\n", discount);
     printf("--------------------------------\n");
 
-    nodes = (node *) calloc(max_num_nodes, sizeof(node));
+    names = (char **) calloc(max_num_nodes, sizeof(char *));
     InitHashTable();
     ReadData();
     char tmp[MAX_STRING];
@@ -565,9 +685,9 @@ int main(int argc, char **argv) {
     printf("--------------------------------\n");
     real bfs_time = average(bfs_times, num_threads), ri_time = average(ri_times, num_threads), walk_time = average(
             walk_times, num_threads);
-    printf("bfs time %f\n", bfs_time);
-    printf("ri time %f\n", ri_time);
-    printf("walk time %f\n", walk_time);
+    printf("bfs_time %f\n", bfs_time);
+    printf("ri_time %f\n", ri_time);
+    printf("walk_time %f\n", walk_time);
 
     sprintf(tmp, "python src/c_src/w2v.py %s %d %d %d %d %s.tmp", walk_dir, dim,
             window_size, iter_num, num_threads, embedding_file);

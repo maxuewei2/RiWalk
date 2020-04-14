@@ -20,8 +20,7 @@ class RiGraph:
 
         self.num_nodes = len(self.g)
         self.degrees_ = tuple([len(self.g[_]) for _ in range(len(self.g))])
-
-        self.rand = random.Random()
+        self.logDegrees_ = tuple(np.asarray(self.degrees_).tolist())
 
     def process_the_last_layer(self, root, the_last_layer, visited, tmp_list):
         """
@@ -96,16 +95,17 @@ class RiGraph:
         :return: sp_dict, a dictionary of {node: its_new_identifier} pairs
         """
         layer_list = [node_layer_dict[node] for node in nb_nodes]
-        degree_list = [self.degrees_[node] for node in nb_nodes]
-        root_degree = self.degrees_[root]
         if self.discount:
-            root_degree = simple_log2(root_degree + 1)
-            degree_list = np.log2(np.asarray(degree_list) + 1).astype(np.int32).tolist()
+            root_degree = self.logDegrees_[root]
+            degree_list = [self.logDegrees_[node] for node in nb_nodes]
+        else:
+            root_degree = self.degrees_[root]
+            degree_list = [self.degrees_[node] for node in nb_nodes]
         sp_dict = {node_: hash((root_degree, layer_, degree_)) for node_, layer_, degree_ in
                    zip(nb_nodes, layer_list, degree_list)}
         return sp_dict
 
-    def get_wl_dict(self, root, node_layer_dict, nb_nodes, wl_lists):
+    def get_wl_dict(self, root, node_layer_dict, nb_nodes, wl_lists, tmp_list):
         """
         given a list of neighbor nodes {nb_nodes},
         return a dictionary of their new identifiers calculated by RiWalk-WL.
@@ -121,8 +121,10 @@ class RiGraph:
             wl_lists[_] = [0] * (self.until + 1)
         for i, nb in enumerate(nb_nodes):
             layer = layer_list[i]
-            for l in g[nb]:  # time consuming
-                wl_lists[l][layer] += 1
+            cur_nbrs=g[nb]
+            tl = tmp_list[nb]
+            for l in range(tl):  # time consuming
+                wl_lists[cur_nbrs[l]][layer] += 1
         x_lists = [wl_lists[_] for _ in nb_nodes]
         if self.discount:
             x_lists = np.log2(np.asarray(x_lists) + 1).astype(np.int32).tolist()
@@ -131,12 +133,11 @@ class RiGraph:
                    zip(nb_nodes, layer_list, x_lists)}
         return wl_dict
 
-    def simulate_walk(self, walk_length, root, rand, tmp_list):
+    def simulate_walk(self, walk_length, root, tmp_list):
         """
         simulating random walks from {root}.
         :param walk_length: the max length of a random walk.
         :param root: each random walk starts from {root}
-        :param rand:
         :param tmp_list: the first {tmp_list[node]} neighbors of {node} are
                          all within {self.until} hops from {root}.
                          suppose the last node of our walk is {cur},
@@ -144,22 +145,24 @@ class RiGraph:
                          such that we will never walk out of {self.until} hops from root.
         :return: walk
         """
-        g = self.g
         walk = [root]
-        while len(walk) < walk_length:
+        g = self.g
+        rand = np.random.randint(self.num_nodes, size=walk_length)
+        for i in range(walk_length - 1):
             cur = walk[-1]
-            cur_nbrs = g[cur][:tmp_list[cur]]
-            if cur_nbrs:
-                next_node = rand.choice(cur_nbrs)
+            cur_nbrs = g[cur]
+            tl = tmp_list[cur]
+            if tl:
+                next_node = cur_nbrs[rand[i] % tl]
                 walk.append(next_node)
             else:
                 break
         return walk
 
-    def simulate_walks_for_node(self, root, num_walks, walk_length, rand, tmp_list):
+    def simulate_walks_for_node(self, root, num_walks, walk_length, tmp_list):
         walks = []
         for walk_iter in range(num_walks):
-            walk = self.simulate_walk(walk_length=walk_length, root=root, rand=rand, tmp_list=tmp_list)
+            walk = self.simulate_walk(walk_length=walk_length, root=root, tmp_list=tmp_list)
             walks.append(walk)
         return walks
 
@@ -211,7 +214,6 @@ def save_random_walks(walks, part, i):
 def process_random_walks_chunk(ri_graph, vertices, part_id, until, num_walks, walk_length):
     walks_all = []
     i = 0
-    rand = ri_graph.rand
     tmp_list = [0] * ri_graph.num_nodes
     visited = [-1] * ri_graph.num_nodes
     wl_lists = [[0] * (until + 1) for _ in range(ri_graph.num_nodes)]
@@ -228,7 +230,7 @@ def process_random_walks_chunk(ri_graph, vertices, part_id, until, num_walks, wa
         nei_nodes = list(node_layer_dict.keys())
 
         walk_begin_time_ = time.time()
-        walks = ri_graph.simulate_walks_for_node(v, num_walks, walk_length, rand, tmp_list)
+        walks = ri_graph.simulate_walks_for_node(v, num_walks, walk_length, tmp_list)
         walk_end_time_ = time.time()
         walk_time_ += (walk_end_time_ - walk_begin_time_)
 
@@ -239,7 +241,7 @@ def process_random_walks_chunk(ri_graph, vertices, part_id, until, num_walks, wa
             walks_all.extend(sp_walks)
 
         if 'wl' == ri_graph.flag:
-            wl_dict = ri_graph.get_wl_dict(v, node_layer_dict, nei_nodes, wl_lists)
+            wl_dict = ri_graph.get_wl_dict(v, node_layer_dict, nei_nodes, wl_lists, tmp_list)
             wl_walks = get_ri_walks(walks, v, wl_dict)
             walks_all.extend(wl_walks)
         ri_end_time_ = time.time()
