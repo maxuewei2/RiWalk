@@ -9,7 +9,7 @@ This repository provides reference implementations of **RiWalk** as described in
 The RiWalk algorithm learns continuous representations for nodes in graphs. The leaned representations capture structural similarities between nodes.  
 
 <p align="center">
-<img style="float: center;" src="figures/structural-embedding.png">
+<img style="float: center;" src="figures/structural-embedding.png" width="720">
 </p>
 
 <br/>
@@ -20,7 +20,7 @@ The RiWalk algorithm learns continuous representations for nodes in graphs. The 
 RiWalk decouples the structural embedding problem into a role identification procedure and a network embedding procedure. <br/>
 The key idea of RiWalk can be illustrated as in the following picture. 
 <p align="center">
-<img style="float: center" src="figures/key-idea.png">
+<img style="float: center" src="figures/key-idea.png" width="720">
 </p>
 
 Two nodes a and u residing far apart in a network have similar local topologies but totally different context nodes. However, after the role identification procedure, they have similar context and are indirectly densely connected, thus typical network embedding methods can be directly applied to learn structural embeddings.
