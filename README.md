@@ -28,16 +28,16 @@ Two nodes a and u residing far apart in a network have similar local topologies 
 ### Usage
 This repository provides several different implementations of RiWalk:
 - src/RiWalk: a python implementation of RiWalk-SP and RiWalk-WL as described in the paper.
-- src/RiWalkRW: a python implementation of RiWalk-RWSP and RiWalk-RWWL, two variations of RiWalk-SP and RiWalk-WL.<br/> RiWalkRW traverses a subgraph induced by random walk sequences instead of breadth-first searching the local subgraph.
-- src/RiWalk-C: a C implementation of RiWalk-SP and RiWalk-RWSP. 
+- src/RiWalk-RW: a python implementation of RiWalk-RW-SP and RiWalk-RW-WL, two variations of RiWalk-SP and RiWalk-WL. RiWalk-RW traverses a subgraph induced by random walk sequences instead of breadth-first searching the local subgraph.
+- src/RiWalk-C: a C implementation of RiWalk-SP and RiWalk-RW-SP. 
 
 #### Full Command List
 The full list of command line options is available with 
 ```	bash
 # RiWalk
 python3 src/RiWalk/RiWalk.py --help  
-# RiWalkRW
-python3 src/RiWalkRW/RiWalkRW.py --help  
+# RiWalk-RW
+python3 src/RiWalk-RW/RiWalk-RW.py --help  
 # RiWalk-C
 gcc -lm -pthread -Ofast -march=native -Wall -ffast-math -Wno-unused-result src/RiWalk-C/RiWalk.c -o src/RiWalk-C/RiWalk
 src/RiWalk-C/RiWalk  
