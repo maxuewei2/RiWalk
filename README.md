@@ -64,6 +64,17 @@ node_id dim1 dim2 ... dimd
 ```
 where dim1, ... , dimd is the *d*-dimensional representation learned by RiWalk.
 
+### Running Time Comparison
+
+<p align="center">
+<img style="float: center" src="figures/network_info.png" width="720">
+</p>
+
+<div style="width:100%;text-align:center">
+<img style="display:inline-block" src="figures/role-identification-time.png" width="47%">
+<img style="display:inline-block" src="figures/walk-time.png" width="47%">
+</div>
+
 ### Acknowledgements
 We would like to thank the authors of [node2vec](https://github.com/aditya-grover/node2vec), [struc2vec](https://github.com/leoribeiro/struc2vec), [GraphWave](https://github.com/snap-stanford/graphwave) and [LINE](https://github.com/tangjianpku/LINE) for the open access of the implementations of their methods.
 
@@ -72,3 +83,4 @@ We would like to thank the authors of [node2vec](https://github.com/aditya-grove
 
 ###  Citation
 [https://dblp.org/rec/bibtex/conf/icdm/MaQQZW19](https://dblp.org/rec/bibtex/conf/icdm/MaQQZW19)
+
