@@ -169,21 +169,13 @@ class RiWalk:
     def learn(self, nx_g, mapping):
         g = RiWalkRWGraph.RiGraph(nx_g, self.args)
 
-        logging.debug('begin sampling')
-        sampling_begin_time = time.time()
-
         walk_time, bfs_time, ri_time, walks_writing_time = g.process_random_walks()
 
-        sampling_end_time = time.time()
-        logging.debug('done sampling')
-        logging.debug('sampling_time: {}'.format(sampling_end_time - sampling_begin_time))
-        print('sampling_time', sampling_end_time - sampling_begin_time, flush=True)
-        print('walk_time', walk_time, flush=True)
-        print('bfs_time', bfs_time, flush=True)
-        print('ri_time', ri_time, flush=True)
-        print('walks_writing_time', walks_writing_time, flush=True)
-        print('role_identification_time', ri_time + bfs_time, flush=True)
-
+        print('walk_time', walk_time / self.args.workers, flush=True)
+        print('bfs_time', bfs_time / self.args.workers, flush=True)
+        print('ri_time', ri_time / self.args.workers, flush=True)
+        print('walks_writing_time', walks_writing_time / self.args.workers, flush=True)
+        
         wv = self.learn_embeddings()
 
         original_wv = Word2VecKeyedVectors(self.args.dimensions)
@@ -218,7 +210,7 @@ def main():
 
     write_begin_time = time.time()
     wv.save_word2vec_format(fname=args.output, binary=False)
-    logging.debug('writing time: {}'.format(time.time() - write_begin_time))
+    logging.debug('embedding_writing_time: {}'.format(time.time() - write_begin_time))
 
     json.dump({'time': total_time}, open(args.output.replace('.emb', '_time.json'), 'w'))
 
