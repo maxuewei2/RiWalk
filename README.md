@@ -6,7 +6,7 @@ This repository provides reference implementations of **RiWalk** as described in
 > Xuewei Ma, Geng Qin, Zhiyang Qiu, Mingxin Zheng, Zhe Wang.<br>
 > IEEE International Conference on Data Mining, ICDM, 2019.<br>
 
-The RiWalk algorithm learns continuous representations for nodes in graphs. The leaned representations capture structural similarities between nodes.  
+The RiWalk algorithm learns continuous representations for nodes in graphs. The learned representations capture structural similarities between nodes.  
 
 <p align="center">
 <img style="float: center;" src="figures/structural-embedding.png" width="720">
